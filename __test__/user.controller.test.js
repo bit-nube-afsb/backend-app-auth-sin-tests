@@ -5,7 +5,8 @@ const app = require('./../index')
 jest.mock('./../models/User', ()=>{
     return {
         find: jest.fn(),
-        findOne: jest.fn()
+        findOne: jest.fn(),
+        findByIdAndDelete: jest.fn()
     }
 })
 
@@ -54,9 +55,12 @@ describe('LOGIN USERS', () => {
     let userId = 'test-id';
     let userEmail = 'test@gmail.com';
     let userPassword = 'test-password';
+    let wrongPassword = 'wrong-password';
     let mockUserResponse = {_id: userId, email: userEmail, password: userPassword};
+    let mockUserWrongPassword = {_id: userId, email: userEmail, password: wrongPassword};
     let mockBodyRequest = {email: userEmail, password: userPassword};
-
+    let mockUserNotFound = {ok: false, msg: 'User doesnt exist!!'};
+    let mockWrongPasswordResponse = {ok: false, msg: 'Incorrect password!!'};
     const urlLoginPath = '/api/login';
 
     it('Deberia logear un usuario con las credenciales correctas', async ()=>{
@@ -70,7 +74,7 @@ describe('LOGIN USERS', () => {
         
         // Assert - Comparar las posibles respuestas del llamado de login
         expect(response.statusCode).toBe(200);
-        expect(response.body).toHaveProperty('token')
+        expect(response.body).toHaveProperty('token');
     })
 
     it('Deberia tener un error al intentar logearse', async ()=>{
@@ -85,5 +89,90 @@ describe('LOGIN USERS', () => {
         // Assert - Comparar los posibles respuestas del error de login
         expect(response.statusCode).toBe(500);
     })
+    it('Debería devolver error si el usuario no existe', async () => {
+        // Arrange - Simular que el usuario no existe en la base de datos
+        User.findOne.mockResolvedValueOnce(null);
 
+        // Act - Llamar al endpoint login
+        const response = await request(app)
+            .post(urlLoginPath)
+            .send(mockBodyRequest);
+
+        // Assert - Verificar respuesta en caso de que el usuario no exista
+        expect(response.statusCode).toBe(400);
+        expect(response.body).toEqual(mockUserNotFound);
+    });
+
+    it('Deberia tener una respuesta http 400 cuando la contraseña es incorrecta', async () => {
+        // Arrange  - Simular que se retorna un usuario con un email especifico
+        User.findOne.mockResolvedValueOnce(mockUserResponse);
+
+        // Act - Llamar al endpoint login
+        const response = await request(app)
+            .post(urlLoginPath)
+            .send(mockUserWrongPassword);
+        
+        // Assert - Validar las respuestas esperadas al hacer la acción
+        expect(response.statusCode).toBe(400);
+        expect(response.body).toEqual(mockWrongPasswordResponse);
+    })
+})
+
+describe('CREATE USER ',()=>{
+    let userId = 'test-id';
+    let userEmail = 'test@gmail.com';
+    let userPassword = 'testPassword1!';
+    let mockBodyRequest = {email: userEmail, password: userPassword};
+
+    let registerUrlPath = '/api/register';
+
+    it('Debería ocurrir un error al intentar crear un usuario',async ()=>{
+        // Arrange - Error al intentar conectarse con cualquier cosa externa
+        User.findOne.mockRejectedValueOnce(new Error('Ha ocurrido un error'));
+
+        // Act - Llamada a la api para crear un usuario
+        const response = await request(app)
+        .post(registerUrlPath)
+        .send(mockBodyRequest);
+
+        // Assert - Verificar las respuestas esperadas de acuerdo al controlador
+        expect(response.statusCode).toBe(500);
+    })
+})
+
+describe('DELETE USERS BY ID', ()=>{
+
+    let userEmail = 'test@gmail.com';
+    let userPassword = 'testPassword1!';
+    let deleteUrlPath = "/api/delete-user/";
+    let userId = "test-id";
+
+    const mockDeleteResponse = {email: userEmail, password: userPassword};
+    const mockBodyResponse = { ok: true, msg: `User with ID ${userId} deleted successfully` }
+
+    it('Se intenta eliminar el usuario pero no existe en la base de datos',async ()=>{
+        // Arrange 
+        User.findByIdAndDelete.mockResolvedValueOnce(null);
+
+        // Act
+        const response = await request(app)
+        .delete(`${deleteUrlPath}${userId}`);
+
+        // Assert
+        expect(response.statusCode).toBe(404);
+
+    });
+
+    it('Se realiza el borrado correctamente', async ()=>{
+        // Arrange
+        User.findByIdAndDelete.mockResolvedValueOnce(mockDeleteResponse);
+
+        // Act 
+        const response = await request(app)
+        .delete(`${deleteUrlPath}${userId}`);
+
+        // Assert
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toEqual(mockBodyResponse);
+    })
 })
